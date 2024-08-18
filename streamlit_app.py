@@ -21,7 +21,6 @@ def load_data():
 # Load the data
 df = load_data()
 
-
 # Ensure the Date column is in datetime format
 df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 
@@ -35,12 +34,11 @@ st.write(f"Data date range: {df['Date'].min().date()} to {df['Date'].max().date(
 df['Daily Return'] = df['Close'].pct_change().fillna(0)  # Calculate daily return
 df['3x Leveraged Return'] = df['Daily Return'] * 3        # Apply 3x leverage
 
-# Initialize the portfolio value
-df['Portfolio Value'] = 1000.0  # Starting with an initial investment of $1000
+# Calculate the 90-day moving average
+df['90_day_avg'] = df['Close'].rolling(window=90, min_periods=1).mean()
 
-# Calculate the portfolio value using daily compounded returns
-for i in range(1, len(df)):
-    df.iloc[i, df.columns.get_loc('Portfolio Value')] = df.iloc[i-1, df.columns.get_loc('Portfolio Value')] * (1 + df.iloc[i, df.columns.get_loc('3x Leveraged Return')])
+# Initialize the portfolio value
+df['Portfolio Value'] = 0.0  # Will accumulate investments
 
 # Set the correct date range based on the data
 default_start_date = df['Date'].min().date()
@@ -65,14 +63,56 @@ initial_investment = st.number_input("Initial Investment Amount", min_value=0.0,
 recurring_amount = st.number_input("Recurring Investment Amount", min_value=0.0, step=100.0, value=0.0)
 frequency = st.selectbox("Recurring Investment Frequency", ["Weekly", "Monthly", "Quarterly"])
 
-# Filter the data and adjust the portfolio value according to the selected date range
+# Conditional Investment
+use_conditional_investment = st.checkbox("Use Conditional Investment?")
+conditional_investment_amount = 0.0
+percentage_decrease = 0.0
+
+if use_conditional_investment:
+    conditional_investment_amount = st.number_input("Conditional Investment Amount", min_value=0.0, step=100.0, value=500.0)
+    percentage_decrease = st.slider("Percentage Decrease in QQQ compared to Last 90 Days Average", min_value=0, max_value=100, value=10)
+
+# Convert start_date and end_date to pd.Timestamp for accurate filtering
 start_date = pd.Timestamp(start_date)
 end_date = pd.Timestamp(end_date)
 
+# Filter the data according to the selected date range
 df_filtered = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy()
 
-# Adjust the initial portfolio value based on the user input
-df_filtered['Portfolio Value'] = df_filtered['Portfolio Value'] / df_filtered.iloc[0]['Portfolio Value'] * initial_investment
+# Initialize the portfolio value with the initial investment
+df_filtered.at[df_filtered.index[0], 'Portfolio Value'] = initial_investment
+
+# Set the frequency in days
+frequency_days = {'Weekly': 7, 'Monthly': 30, 'Quarterly': 90}[frequency]
+current_date = start_date + timedelta(days=frequency_days)
+
+# Track total investments
+recurring_investment_total = 0.0
+recurring_investment_count = 0
+conditional_investment_total = 0.0
+conditional_investment_count = 0
+
+# Simulate the portfolio value over time, including recurring and conditional investments
+for i in range(1, len(df_filtered)):
+    # Compound the portfolio value with the 3x leveraged return
+    df_filtered.iloc[i, df_filtered.columns.get_loc('Portfolio Value')] = (
+        df_filtered.iloc[i-1, df_filtered.columns.get_loc('Portfolio Value')] * 
+        (1 + df_filtered.iloc[i, df_filtered.columns.get_loc('3x Leveraged Return')])
+    )
+    
+    # Add recurring investments on the specified dates
+    if df_filtered.iloc[i]['Date'] >= current_date:
+        df_filtered.iloc[i, df_filtered.columns.get_loc('Portfolio Value')] += recurring_amount
+        recurring_investment_total += recurring_amount
+        recurring_investment_count += 1
+        current_date += timedelta(days=frequency_days)
+
+    # Apply conditional investments based on the specified criteria
+    if use_conditional_investment:
+        if df_filtered.iloc[i]['Close'] < (1 - percentage_decrease / 100) * df_filtered.iloc[i]['90_day_avg']:
+            df_filtered.iloc[i, df_filtered.columns.get_loc('Portfolio Value')] += conditional_investment_amount
+            conditional_investment_total += conditional_investment_amount
+            conditional_investment_count += 1
 
 # Plot the portfolio development
 st.subheader("Portfolio Value Development Over Time")
@@ -84,12 +124,18 @@ plt.title("Investment Portfolio Value Over Time")
 plt.legend()
 st.pyplot(plt)
 
-# Display final portfolio metrics
+# Calculate and display final portfolio metrics
 final_value = df_filtered.iloc[-1]['Portfolio Value']
-total_investment = initial_investment
+total_investment = initial_investment + recurring_investment_total + conditional_investment_total
+investment_period_days = (end_date - start_date).days
+
 st.write(f"Final Portfolio Value: ${final_value:,.2f}")
 st.write(f"Total Investment Made: ${total_investment:,.2f}")
 st.write(f"Total Portfolio Return: {((final_value - total_investment) / total_investment) * 100:.2f}%")
+st.write(f"Initial Investment: ${initial_investment:,.2f}")
+st.write(f"Total Recurring Investment: ${recurring_investment_total:,.2f} ({recurring_investment_count} times)")
+st.write(f"Total Conditional Investment: ${conditional_investment_total:,.2f} ({conditional_investment_count} times)")
+st.write(f"Investment Period: {investment_period_days} days")
 
 # Force garbage collection to free up unused memory
 del df, df_filtered
