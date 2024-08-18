@@ -1,6 +1,6 @@
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
+import plotly.graph_objs as go
 from datetime import timedelta
 import gc
 
@@ -116,13 +116,17 @@ for i in range(1, len(df_filtered)):
 
 # Plot the portfolio development
 st.subheader("Portfolio Value Development Over Time")
-plt.figure(figsize=(10, 6), dpi=80)
-plt.plot(df_filtered['Date'], df_filtered['Portfolio Value'], label="Portfolio Value")
-plt.xlabel("Date")
-plt.ylabel("Portfolio Value")
-plt.title("Investment Portfolio Value Over Time")
-plt.legend()
-st.pyplot(plt)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df_filtered['Date'], y=df_filtered['Portfolio Value'], mode='lines', name='Portfolio Value'))
+fig.update_layout(
+    width=1000,
+    height=600,
+    xaxis_title='Date',
+    yaxis_title='Portfolio Value',
+    title='Investment Portfolio Value Over Time'
+)
+st.plotly_chart(fig)
 
 # Calculate and display final portfolio metrics
 final_value = df_filtered.iloc[-1]['Portfolio Value']
