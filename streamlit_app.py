@@ -21,9 +21,6 @@ def load_data():
 # Load the data
 df = load_data()
 
-# Display the first few rows to check if dates are parsed correctly
-st.write("First few rows of the data:")
-st.write(df.head())
 
 # Ensure the Date column is in datetime format
 df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
