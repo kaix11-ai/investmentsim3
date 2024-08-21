@@ -67,10 +67,12 @@ frequency = st.selectbox("Recurring Investment Frequency", ["Weekly", "Monthly",
 use_conditional_investment = st.checkbox("Use Conditional Investment?")
 conditional_investment_amount = 0.0
 percentage_decrease = 0.0
+waiting_weeks = 0
 
 if use_conditional_investment:
     conditional_investment_amount = st.number_input("Conditional Investment Amount", min_value=0.0, step=100.0, value=500.0)
     percentage_decrease = st.slider("Percentage Decrease in QQQ compared to Last 90 Days Average", min_value=0, max_value=100, value=10)
+    waiting_weeks = st.number_input("Wait XXX Weeks Before Next Conditional Investment", min_value=1, step=1, value=1)
 
 # Convert start_date and end_date to pd.Timestamp for accurate filtering
 start_date = pd.Timestamp(start_date)
@@ -91,6 +93,10 @@ recurring_investment_total = 0.0
 recurring_investment_count = 0
 conditional_investment_total = 0.0
 conditional_investment_count = 0
+conditional_investment_dates = []
+
+# Initialize the last conditional investment date to None
+last_conditional_investment_date = None
 
 # Simulate the portfolio value over time, including recurring and conditional investments
 for i in range(1, len(df_filtered)):
@@ -107,25 +113,49 @@ for i in range(1, len(df_filtered)):
         recurring_investment_count += 1
         current_date += timedelta(days=frequency_days)
 
-    # Apply conditional investments based on the specified criteria
+    # Apply conditional investments based on the specified criteria and waiting period
     if use_conditional_investment:
-        if df_filtered.iloc[i]['Close'] < (1 - percentage_decrease / 100) * df_filtered.iloc[i]['90_day_avg']:
-            df_filtered.iloc[i, df_filtered.columns.get_loc('Portfolio Value')] += conditional_investment_amount
-            conditional_investment_total += conditional_investment_amount
-            conditional_investment_count += 1
+        if last_conditional_investment_date is None or \
+           (df_filtered.iloc[i]['Date'] - last_conditional_investment_date).days >= waiting_weeks * 7:
+            if df_filtered.iloc[i]['Close'] < (1 - percentage_decrease / 100) * df_filtered.iloc[i]['90_day_avg']:
+                df_filtered.iloc[i, df_filtered.columns.get_loc('Portfolio Value')] += conditional_investment_amount
+                conditional_investment_total += conditional_investment_amount
+                conditional_investment_count += 1
+                conditional_investment_dates.append(df_filtered.iloc[i]['Date'])
+                last_conditional_investment_date = df_filtered.iloc[i]['Date']
 
-# Plot the portfolio development
+# Plot the portfolio development with markers for conditional investments
 st.subheader("Portfolio Value Development Over Time")
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=df_filtered['Date'], y=df_filtered['Portfolio Value'], mode='lines', name='Portfolio Value'))
+
+# Add the portfolio value line
+fig.add_trace(go.Scatter(
+    x=df_filtered['Date'],
+    y=df_filtered['Portfolio Value'],
+    mode='lines',
+    name='Portfolio Value'
+))
+
+# Add markers for conditional investments
+if use_conditional_investment and conditional_investment_dates:
+    fig.add_trace(go.Scatter(
+        x=conditional_investment_dates,
+        y=df_filtered[df_filtered['Date'].isin(conditional_investment_dates)]['Portfolio Value'],
+        mode='markers',
+        marker=dict(color='red', size=10),
+        name='Conditional Investment'
+    ))
+
 fig.update_layout(
+    title="Investment Portfolio Value Over Time",
+    xaxis_title="Date",
+    yaxis_title="Portfolio Value",
+    autosize=False,
     width=1000,
-    height=600,
-    xaxis_title='Date',
-    yaxis_title='Portfolio Value',
-    title='Investment Portfolio Value Over Time'
+    height=600
 )
+
 st.plotly_chart(fig)
 
 # Calculate and display final portfolio metrics
@@ -138,7 +168,8 @@ st.write(f"Total Investment Made: ${total_investment:,.2f}")
 st.write(f"Total Portfolio Return: {((final_value - total_investment) / total_investment) * 100:.2f}%")
 st.write(f"Initial Investment: ${initial_investment:,.2f}")
 st.write(f"Total Recurring Investment: ${recurring_investment_total:,.2f} ({recurring_investment_count} times)")
-st.write(f"Total Conditional Investment: ${conditional_investment_total:,.2f} ({conditional_investment_count} times)")
+if use_conditional_investment:
+    st.write(f"Total Conditional Investment: ${conditional_investment_total:,.2f} ({conditional_investment_count} times)")
 st.write(f"Investment Period: {investment_period_days} days")
 
 # Force garbage collection to free up unused memory
