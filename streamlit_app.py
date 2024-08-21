@@ -123,13 +123,19 @@ for i in range(1, len(df_combined)):
     
     # Rebalancing
     if df_combined.iloc[i]['Date'] >= current_date:
+        # Calculate the target values based on weights
+        qqq_value = df_combined.iloc[i]['Portfolio Value'] * (qqq_weight / 100)
+        tlt_value = df_combined.iloc[i]['Portfolio Value'] * (tlt_weight / 100)
+        df_combined.iloc[i, df_combined.columns.get_loc('Portfolio Value')] = qqq_value + tlt_value
+        
+        # Add recurring investment based on frequency
         df_combined.iloc[i, df_combined.columns.get_loc('Portfolio Value')] += recurring_amount
         recurring_investment_total += recurring_amount
         recurring_investment_count += 1
+        
         current_date += timedelta(days={'Weekly': 7, 'Monthly': 30, 'Quarterly': 90}[frequency])
     
     # Conditional Investment
-# Conditional Investment
     if use_conditional_investment and (df_combined.iloc[i]['Close'] < (1 - percentage_decrease / 100) * df_combined.iloc[i]['90_day_avg']):
         if (df_combined.iloc[i]['Date'] - last_conditional_investment_date).days >= waiting_weeks * 7:
             df_combined.iloc[i, df_combined.columns.get_loc('Portfolio Value')] += conditional_investment_amount
@@ -137,7 +143,6 @@ for i in range(1, len(df_combined)):
             conditional_investment_count += 1
             conditional_investment_dates.append(df_combined.iloc[i]['Date'])
             last_conditional_investment_date = df_combined.iloc[i]['Date']
-
 
 # Plot the portfolio development
 st.subheader("Portfolio Value Development Over Time")
